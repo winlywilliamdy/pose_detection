@@ -162,7 +162,7 @@ with mp_pose.Pose(
 
     # Flip the image horizontally for a selfie-view display.
     window_name = 'pose'
-    screen = screeninfo.get_monitors()[1]
+    screen = screeninfo.get_monitors()[0]
     cv2.namedWindow(window_name, cv2.WND_PROP_FULLSCREEN)
     cv2.moveWindow(window_name, screen.x - 1, screen.y - 1)
     cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN,cv2.WINDOW_FULLSCREEN)
