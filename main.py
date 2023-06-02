@@ -1,29 +1,28 @@
 import cv2
 import mediapipe as mp
 import numpy as np
-import csv
 import time
 from keypoint_classifier import KeyPointClassifier
-from pynput.keyboard import Key, Controller
+import screeninfo
 
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
 mp_pose = mp.solutions.pose
 keypoint_classifier = KeyPointClassifier()
 
-keyboard = Controller()
 playing = False
 mode = 0
 number = 4 # number of poses
 default = False
 hand_sign_id = 0
-#pose index
-#0 - right
-#1 - left
-#2 - rotate
-#3 - harddrop
-#4 - hold
-#5 - Default Position
+t_prev = time.localtime(time.time())
+t_now = time.localtime(time.time())
+
+code = ["6","9"]
+
+counting = True
+
+countdown = 180
 
 start_time = 0
 
@@ -36,24 +35,20 @@ def pre_process_landmark(results):
       land_mark_list.append(data_points.z)
     return land_mark_list
        
+def convertToTime(countdown):
+  minutes = int(countdown / 60)
+  seconds = (countdown - (minutes * 60))
 
-    
-
-def logging_csv(results, number, mode):
-    land_marks = pre_process_landmark(results)
-    if mode == 0:
-       pass
-    if mode == 1 and (0 <= number <= 9):
-       csv_path = 'keypoint.csv'
-       with open(csv_path, 'a', newline="") as f:
-          writer = csv.writer(f)
-          writer.writerow([number,*land_marks])
-    return
-# Pose Classification, 0_x, 0_y, 0_z, 1_x, 1_y, 1_z, ....
+  print(countdown, minutes, seconds)
+  if seconds <10:
+    return "0{min} : 0{sec}".format(min = minutes, sec = seconds)
+  else :
+    return "0{min} : {sec}".format(min = minutes, sec = seconds)
 
 # For static images:
 IMAGE_FILES = []
 BG_COLOR = (192, 192, 192) # gray
+
 with mp_pose.Pose(
     static_image_mode=True,
     model_complexity=2,
@@ -95,16 +90,15 @@ with mp_pose.Pose(
 # For webcam input:
 cap = cv2.VideoCapture(0)
 with mp_pose.Pose(
-    min_detection_confidence=0.5,
+    min_detection_confidence=0.7,
     min_tracking_confidence=0.5) as pose:
+  
   while cap.isOpened():
+    t_now = time.localtime(time.time())
     success, image = cap.read()
     if not success:
       print("Ignoring empty camera frame.")
-      # If loading a video, use 'break' instead of 'continue'.
       continue
-    
-
 
     # To improve performance, optionally mark the image as not writeable to
     # pass by reference.
@@ -112,75 +106,40 @@ with mp_pose.Pose(
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = pose.process(image)
     
-    collecting = False
     
     key=cv2.waitKey(1)
     if key == 110: #n
       mode = 0
-    if key == 107: #k
-      mode = 1
-      start_time = time.time()
     if key == 104: #h
-      if playing :
-          playing = False
-      elif playing == False:
-          print("playing")
-          playing = True
+      mode = 2
     if key == 27:
       break
-    if time.time()-start_time > 5 and mode == 1:
-      collecting = True
-      print("collecting is true")
-    if collecting == True:   
-      logging_csv(results, number, mode)
-      if time.time()-start_time > 30:
-          mode = 0
-          collecting = False
-          print("done collecting")
+
     if mode == 0:
       try:  
         hand_sign_id = keypoint_classifier(pre_process_landmark(results))
-        
+        if hand_sign_id == 4:
+          print("Correct pose!")
+          if counting == True:
+            if countdown >0:
+              if t_prev.tm_sec != t_now.tm_sec:
+                countdown = countdown -1
+            elif countdown == 0:
+              counting = False
+              # print ("finish")
+        else:
+          # print("Wrong pose!")
+          if counting == True:
+            if countdown < 180:
+              if t_prev.tm_sec != t_now.tm_sec:
+                countdown = countdown +1
       except:
-        print("No Pose Detected")
+        if counting == True:
+          if countdown < 180:
+              if t_prev.tm_sec != t_now.tm_sec:
+                countdown = countdown +1
+          # print("No Pose Detected")
 
-      if playing: # PLAYING TETRIS
-#pose index
-#0 - right
-#1 - left
-#2 - rotate
-#3 - harddrop
-#4 - hold
-#5 - Default Position
-        if hand_sign_id == 5:
-           default = True
-           print(hand_sign_id)
-        if default == True:
-          if (hand_sign_id == 1):
-            print(hand_sign_id)
-            keyboard.press(Key.left)
-            keyboard.release(Key.left)
-            default = False
-          elif (hand_sign_id == 0):
-            keyboard.press(Key.right)
-            keyboard.release(Key.right)    
-            default = False        
-          elif (hand_sign_id == 2):
-            keyboard.press('x')
-            keyboard.release('x')
-            default = False
-          elif (hand_sign_id == 3):
-            keyboard.press(Key.space)
-            keyboard.release(Key.space)
-            default = False
-        if (hand_sign_id == 4):
-          keyboard.press(Key.shift_l)
-          keyboard.release(Key.shift_l)
-          default = False
-          
-
-
-    
     # Draw the pose annotation on the image.
     image.flags.writeable = True
     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
@@ -189,6 +148,25 @@ with mp_pose.Pose(
         results.pose_landmarks,
         mp_pose.POSE_CONNECTIONS,
         landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style())
+    
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    if counting == True:
+      cv2.rectangle(image,(10,300),(260,400),(0,255,0),3)
+      cv2.putText(image, convertToTime(countdown) ,(10,375), font, 2,(0,255,0),2)
+    else:
+      cv2.rectangle(image,(260,280),(325,390),(0,255,0),2)
+      cv2.putText(image, (code[0]) ,(250,375), font, 4,(0,255,0),2)
+      cv2.rectangle(image,(330,280),(400,390),(0,255,0),2)
+      cv2.putText(image, (code[1]) ,(330,375), font, 4,(0,255,0),2)
+
     # Flip the image horizontally for a selfie-view display.
-    cv2.imshow('MediaPipe Pose', cv2.flip(image, 1))
+    window_name = 'pose'
+    screen = screeninfo.get_monitors()[1]
+    cv2.namedWindow(window_name, cv2.WND_PROP_FULLSCREEN)
+    cv2.moveWindow(window_name, screen.x - 1, screen.y - 1)
+    cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN,cv2.WINDOW_FULLSCREEN)
+    cv2.imshow(window_name, image)
+    t_prev = t_now
 cap.release()
+
